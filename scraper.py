@@ -8,6 +8,7 @@ from selenium.webdriver.common.by import By
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
 import time
+import datetime
 
 session = boto3.Session(profile_name='default') 
 s3_client = session.client('s3')
@@ -42,31 +43,31 @@ def main():
             link = a_tag['href']
             links.append(link)
 
-    download_extract_and_upload_to_s3(links, 'data-extract-zip')
+    download_and_upload_to_s3(links)
 
-def download_extract_and_upload_to_s3(links, extract_to):
-    if not os.path.exists(extract_to):
-        os.makedirs(extract_to)
-
+def download_and_upload_to_s3(links):
     for link in links:
-        zip_file_path = os.path.join(extract_to, os.path.basename(link))
+        zip_file_name = os.path.basename(link)
+        zip_file_name_with_extension = zip_file_name + ".zip"
+
+        date_part = zip_file_name_with_extension.split(".")[0]
+        date_object = datetime.datetime.strptime(date_part, "%Y-%m-%d")
+        formatted_date = date_object.strftime("%Y%m%d")
+
+        s3_key = f"data-zip-{formatted_date}.zip" 
         
         with requests.get(link, stream=True) as r:
             r.raise_for_status()
-            with open(zip_file_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-
-        # Extrair o arquivo .zip
-        with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_to)
-        
-        # Upload dos arquivos extraídos para o S3
-        for root, dirs, files in os.walk(extract_to):
-            for file in files:
-                file_path = os.path.join(root, file)
-                s3_key = os.path.relpath(file_path, extract_to)
-                upload_to_s3(file_path, s3_key)
+            
+            try:
+                s3_client.upload_fileobj(r.raw, BUCKET_NAME, s3_key)
+                print(f'Successfully uploaded {s3_key} to s3://{BUCKET_NAME}/{s3_key}')
+            except NoCredentialsError:
+                print('Credentials not available')
+            except PartialCredentialsError:
+                print('Incomplete credentials provided')
+            except Exception as e:
+                print(f'Failed to upload {s3_key} to s3://{BUCKET_NAME}/{s3_key}: {e}')
 
 def upload_to_s3(file_path, s3_key):
     try:
