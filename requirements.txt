@@ -1,0 +1,10 @@
+pandas
+requests
+BeautifulSoup4
+boto3
+unidecode
+lxml
+pyarrow
+aws-sam-cli
+python-dotenv
+selenium
